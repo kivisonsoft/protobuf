@@ -95,18 +95,31 @@ void RepeatedPtrFieldBase::DestroyProtos() {
   tagged_rep_or_elem_ = nullptr;
 }
 
-template <typename F>
-auto* RepeatedPtrFieldBase::AddInternal(F factory) {
+namespace {
+template <typename T>
+struct ElementRecycler {
+  static void clear(void* p) { static_cast<T*>(p)->Clear(); }
+};
+
+template <>
+struct ElementRecycler<std::string> {
+  static void clear(void* str) { static_cast<std::string*>(str)->clear(); }
+};
+
+}  // namespace
+
+template <typename Recycler, typename Factory>
+void* RepeatedPtrFieldBase::AddInternal(Factory factory) {
   Arena* const arena = GetArena();
-  using Result = decltype(factory(arena));
   if (tagged_rep_or_elem_ == nullptr) {
     ExchangeCurrentSize(1);
     tagged_rep_or_elem_ = factory(arena);
-    return static_cast<Result>(tagged_rep_or_elem_);
+    return tagged_rep_or_elem_;
   }
   if (using_sso()) {
     if (ExchangeCurrentSize(1) == 0) {
-      return static_cast<Result>(tagged_rep_or_elem_);
+      Recycler::clear(tagged_rep_or_elem_);
+      return tagged_rep_or_elem_;
     }
   } else {
     absl::PrefetchToLocalCache(rep());
@@ -116,73 +129,24 @@ auto* RepeatedPtrFieldBase::AddInternal(F factory) {
   } else {
     Rep* r = rep();
     if (current_size_ != r->allocated_size) {
-      return static_cast<Result>(
-          r->elements[ExchangeCurrentSize(current_size_ + 1)]);
+      void* cleared = r->elements[ExchangeCurrentSize(current_size_ + 1)];
+      Recycler::clear(cleared);
+      return cleared;
     }
   }
   Rep* r = rep();
   ++r->allocated_size;
   void*& result = r->elements[ExchangeCurrentSize(current_size_ + 1)];
   result = factory(arena);
-  return static_cast<Result>(result);
+  return result;
 }
 
-void* RepeatedPtrFieldBase::AddOutOfLineHelper(ElementFactory factory) {
-  return AddInternal(factory);
+void* RepeatedPtrFieldBase::AddMessageLite(ElementFactory factory) {
+  return AddInternal<ElementRecycler<MessageLite>>(factory);
 }
 
-void RepeatedPtrFieldBase::CloseGap(int start, int num) {
-  if (using_sso()) {
-    if (start == 0 && num == 1) {
-      tagged_rep_or_elem_ = nullptr;
-    }
-  } else {
-    // Close up a gap of "num" elements starting at offset "start".
-    Rep* r = rep();
-    for (int i = start + num; i < r->allocated_size; ++i)
-      r->elements[i - num] = r->elements[i];
-    r->allocated_size -= num;
-  }
-  ExchangeCurrentSize(current_size_ - num);
-}
-
-MessageLite* RepeatedPtrFieldBase::AddMessage(const MessageLite* prototype) {
-  return AddInternal([prototype](Arena* a) { return prototype->New(a); });
-}
-
-void InternalOutOfLineDeleteMessageLite(MessageLite* message) {
-  delete message;
-}
-
-template PROTOBUF_EXPORT_TEMPLATE_DEFINE void
-memswap<ArenaOffsetHelper<RepeatedPtrFieldBase>::value>(
-    char* PROTOBUF_RESTRICT, char* PROTOBUF_RESTRICT);
-
-template <>
-void RepeatedPtrFieldBase::MergeFrom<std::string>(
-    const RepeatedPtrFieldBase& from) {
-  ABSL_DCHECK_NE(&from, this);
-  int new_size = current_size_ + from.current_size_;
-  auto dst = reinterpret_cast<std::string**>(InternalReserve(new_size));
-  auto src = reinterpret_cast<std::string* const*>(from.elements());
-  auto end = src + from.current_size_;
-  auto end_assign = src + std::min(ClearedCount(), from.current_size_);
-  for (; src < end_assign; ++dst, ++src) {
-    (*dst)->assign(**src);
-  }
-  if (Arena* const arena = arena_) {
-    for (; src < end; ++dst, ++src) {
-      *dst = Arena::Create<std::string>(arena, **src);
-    }
-  } else {
-    for (; src < end; ++dst, ++src) {
-      *dst = new std::string(**src);
-    }
-  }
-  ExchangeCurrentSize(new_size);
-  if (new_size > allocated_size()) {
-    rep()->allocated_size = new_size;
-  }
+void* RepeatedPtrFieldBase::AddString() {
+  return AddInternal<ElementRecycler<std::string>>(NewStringElement);
 }
 
 
@@ -198,6 +162,7 @@ int RepeatedPtrFieldBase::MergeIntoClearedMessages(
     ABSL_DCHECK(typeid(*src[i]) == typeid(*src[0]))
         << typeid(*src[i]).name() << " vs " << typeid(*src[0]).name();
 #endif
+    dst[i]->Clear();
     dst[i]->CheckTypeAndMergeFrom(*src[i]);
   }
   return count;
