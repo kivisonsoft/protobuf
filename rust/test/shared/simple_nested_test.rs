@@ -96,3 +96,29 @@ fn test_nested_muts() {
     );
     // TODO: add mutation tests for strings and bytes
 }
+
+#[test]
+fn test_one_more_level_of_depth() {
+    let slyrak = nested_proto::nest::Dragon::new();
+    assert_that!(slyrak.num_wings(), eq(0));
+    assert_that!(slyrak.nessaj().swords(), eq(0));
+    assert_that!(slyrak.nessaj().ser().ultimate_on_cd(), eq(false));
+}
+
+#[test]
+fn test_msg_from_outside() {
+    // let's make sure that we're not just working for messages nested inside
+    // messages, messages from without and within should work
+    let some_house = nested_proto::nest::Baratheon::new();
+    assert_that!(some_house.antlers(), eq(0));
+    assert_that!(some_house.targaryen().madness(), eq(true));
+}
+
+#[test]
+fn test_recursive_msg() {
+    let doll = nested_proto::nest::Matryoshka::new();
+    assert_that!(doll.eyes(), eq(2));
+    assert_that!(doll.doll().eyes(), eq(2));
+    assert_that!(doll.doll().doll().eyes(), eq(2)); // turtles all the way down...
+    assert_that!(doll.doll().doll().doll().eyes(), eq(2)); // ... ad infinitum
+}

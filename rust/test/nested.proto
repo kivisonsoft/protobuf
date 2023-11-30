@@ -41,3 +41,29 @@ message Outer {
   optional .nest.Outer.Inner.SuperInner.DuperInner.EvenMoreInner
       .CantBelieveItsSoInner deep = 2;
 }
+
+message Dragon {
+  message Knight {
+    message Davion {
+      optional bool ultimate_on_cd = 1;
+    }
+    optional int32 swords = 1;
+    optional Davion ser = 2;
+  }
+  optional int32 num_wings = 1;
+  optional Knight nessaj = 2;
+}
+
+message Targaryen {
+  optional bool madness = 1 [default = true];
+}
+
+message Baratheon {
+  optional int32 antlers = 1;
+  optional Targaryen targaryen = 2;
+}
+
+message Matryoshka {
+  optional Matryoshka doll = 1;
+  optional int32 eyes = 2 [default = 2];
+}
