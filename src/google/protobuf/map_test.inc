@@ -2319,6 +2319,37 @@ TEST_F(MapFieldReflectionTest, UninitializedEntry) {
   EXPECT_FALSE(message.IsInitialized());
 }
 
+TEST_F(MapFieldReflectionTest, AlwaysSerializesBothEntries) {
+  const FieldDescriptor* map_field =
+      UNITTEST::TestMessageMap::descriptor()->FindFieldByName(
+          "map_int32_message");
+  const FieldDescriptor* map_key = map_field->message_type()->map_key();
+  const FieldDescriptor* map_value = map_field->message_type()->map_value();
+  for (bool add_key : {true, false}) {
+    for (bool add_value : {true, false}) {
+      UNITTEST::TestMessageMap message;
+      Message* entry_message =
+          message.GetReflection()->AddMessage(&message, map_field);
+      // Add the fields, but leave them as the default to make it easier to
+      // match.
+      if (add_key) {
+        entry_message->GetReflection()->SetInt32(entry_message, map_key, 0);
+      }
+      if (add_value) {
+        entry_message->GetReflection()->MutableMessage(entry_message,
+                                                       map_value);
+      }
+      const auto serialized = message.SerializeAsString();
+      ASSERT_EQ(6, message.ByteSizeLong());
+      EXPECT_EQ(serialized, std::string({
+                                '\012', '\04',  // field=1, LEN, size=4
+                                '\010', '\0',   // key, VARINT, value=0
+                                '\022', '\0',   // value, LEN, size=0
+                            }));
+    }
+  }
+}
+
 class MyMapEntry
     : public internal::MapEntry<MyMapEntry, ::int32_t, ::int32_t,
                                 internal::WireFormatLite::TYPE_INT32,

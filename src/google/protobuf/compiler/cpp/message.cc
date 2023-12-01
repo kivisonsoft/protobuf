@@ -1160,19 +1160,18 @@ void MessageGenerator::GenerateMapEntryClassDefinition(io::Printer* p) {
   Formatter format(p);
   absl::flat_hash_map<absl::string_view, std::string> vars;
   CollectMapInfo(options_, descriptor_, &vars);
-  vars["lite"] =
-      HasDescriptorMethods(descriptor_->file(), options_) ? "" : "Lite";
+  ABSL_CHECK(HasDescriptorMethods(descriptor_->file(), options_));
   auto v = p->WithVars(std::move(vars));
   // Templatize constexpr constructor as a workaround for a bug in gcc 12
   // (warning in gcc 13).
   p->Emit(R"cc(
     class $classname$ final
-        : public ::$proto_ns$::internal::MapEntry$lite$<
+        : public ::$proto_ns$::internal::MapEntry<
               $classname$, $key_cpp$, $val_cpp$,
               ::$proto_ns$::internal::WireFormatLite::$key_wire_type$,
               ::$proto_ns$::internal::WireFormatLite::$val_wire_type$> {
      public:
-      using SuperType = ::$proto_ns$::internal::MapEntry$lite$<
+      using SuperType = ::$proto_ns$::internal::MapEntry<
           $classname$, $key_cpp$, $val_cpp$,
           ::$proto_ns$::internal::WireFormatLite::$key_wire_type$,
           ::$proto_ns$::internal::WireFormatLite::$val_wire_type$>;
@@ -1186,67 +1185,6 @@ void MessageGenerator::GenerateMapEntryClassDefinition(io::Printer* p) {
             &_$classname$_default_instance_);
       }
   )cc");
-  auto utf8_check = internal::cpp::GetUtf8CheckMode(
-      descriptor_->field(0), GetOptimizeFor(descriptor_->file(), options_) ==
-                                 FileOptions::LITE_RUNTIME);
-  if (descriptor_->field(0)->type() == FieldDescriptor::TYPE_STRING &&
-      utf8_check != Utf8CheckMode::kNone) {
-    if (utf8_check == Utf8CheckMode::kStrict) {
-      format(
-          "  static bool ValidateKey(std::string* s) {\n"
-          "    return ::$proto_ns$::internal::WireFormatLite::"
-          "VerifyUtf8String(s->data(), static_cast<int>(s->size()), "
-          "::$proto_ns$::internal::WireFormatLite::PARSE, \"$1$\");\n"
-          " }\n",
-          descriptor_->field(0)->full_name());
-    } else {
-      ABSL_CHECK(utf8_check == Utf8CheckMode::kVerify);
-      format(
-          "  static bool ValidateKey(std::string* s) {\n"
-          "#ifndef NDEBUG\n"
-          "    ::$proto_ns$::internal::WireFormatLite::VerifyUtf8String(\n"
-          "       s->data(), static_cast<int>(s->size()), "
-          "::$proto_ns$::internal::"
-          "WireFormatLite::PARSE, \"$1$\");\n"
-          "#else\n"
-          "    (void) s;\n"
-          "#endif\n"
-          "    return true;\n"
-          " }\n",
-          descriptor_->field(0)->full_name());
-    }
-  } else {
-    format("  static bool ValidateKey(void*) { return true; }\n");
-  }
-  if (descriptor_->field(1)->type() == FieldDescriptor::TYPE_STRING &&
-      utf8_check != Utf8CheckMode::kNone) {
-    if (utf8_check == Utf8CheckMode::kStrict) {
-      format(
-          "  static bool ValidateValue(std::string* s) {\n"
-          "    return ::$proto_ns$::internal::WireFormatLite::"
-          "VerifyUtf8String(s->data(), static_cast<int>(s->size()), "
-          "::$proto_ns$::internal::WireFormatLite::PARSE, \"$1$\");\n"
-          " }\n",
-          descriptor_->field(1)->full_name());
-    } else {
-      ABSL_CHECK(utf8_check == Utf8CheckMode::kVerify);
-      format(
-          "  static bool ValidateValue(std::string* s) {\n"
-          "#ifndef NDEBUG\n"
-          "    ::$proto_ns$::internal::WireFormatLite::VerifyUtf8String(\n"
-          "       s->data(), static_cast<int>(s->size()), "
-          "::$proto_ns$::internal::"
-          "WireFormatLite::PARSE, \"$1$\");\n"
-          "#else\n"
-          "    (void) s;\n"
-          "#endif\n"
-          "    return true;\n"
-          " }\n",
-          descriptor_->field(1)->full_name());
-    }
-  } else {
-    format("  static bool ValidateValue(void*) { return true; }\n");
-  }
   if (HasDescriptorMethods(descriptor_->file(), options_)) {
     format("  ::$proto_ns$::Metadata GetMetadata() const final;\n");
   }
