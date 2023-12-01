@@ -117,11 +117,31 @@ std::string ThunkMapOrRepeated(Context<FieldDescriptor> field,
   return thunk;
 }
 
+std::string ThunkMsg(Context<FieldDescriptor> field, absl::string_view op) {
+  std::string thunk = FieldPrefix(field);
+  absl::string_view format = "_$0_$1";
+  if (field.is_upb()) {
+    if (op == "get") {
+      format = "_$1";
+    } else if (op == "get_mut") {
+      format = "_mutable_$1";
+    }
+  }
+  absl::SubstituteAndAppend(&thunk, format, op, field.desc().name());
+  return thunk;
+  // alternatively:
+  // if (op == "get_mut") op = "mutable";
+  // return Thunk<FieldDescriptor>(field, op);
+}
+
 }  // namespace
 
 std::string Thunk(Context<FieldDescriptor> field, absl::string_view op) {
   if (field.desc().is_map() || field.desc().is_repeated()) {
     return ThunkMapOrRepeated(field, op);
+  }
+  if (field.desc().type() == FieldDescriptor::TYPE_MESSAGE) {
+    return ThunkMsg(field, op);
   }
   return Thunk<FieldDescriptor>(field, op);
 }
