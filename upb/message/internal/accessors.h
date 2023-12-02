@@ -102,24 +102,20 @@ UPB_INLINE void _upb_Message_ClearHasbitByField(const upb_Message* msg,
 
 // Oneof case access ///////////////////////////////////////////////////////////
 
-UPB_INLINE size_t _upb_MiniTableField_OneofOffset(const upb_MiniTableField* f) {
-  UPB_ASSERT(f->presence < 0);
-  return ~(ptrdiff_t)f->presence;
-}
-
-UPB_INLINE uint32_t* _upb_Message_OneofCasePtr(upb_Message* msg,
-                                               const upb_MiniTableField* f) {
+UPB_INLINE uint32_t* UPB_PRIVATE(_upb_Message_OneofCasePtr)(
+    upb_Message* msg, const upb_MiniTableField* f) {
   return UPB_PTR_AT(msg, _upb_MiniTableField_OneofOffset(f), uint32_t);
 }
 
-UPB_INLINE uint32_t _upb_Message_GetOneofCase(const upb_Message* msg,
-                                              const upb_MiniTableField* f) {
-  return *_upb_Message_OneofCasePtr((upb_Message*)msg, f);
+UPB_INLINE uint32_t UPB_PRIVATE(_upb_Message_GetOneofCase)(
+    const upb_Message* msg, const upb_MiniTableField* f) {
+  return *UPB_PRIVATE(_upb_Message_OneofCasePtr)((upb_Message*)msg, f);
 }
 
-UPB_INLINE void _upb_Message_SetOneofCase(upb_Message* msg,
-                                          const upb_MiniTableField* f) {
-  *_upb_Message_OneofCasePtr(msg, f) = upb_MiniTableField_Number(f);
+UPB_INLINE void UPB_PRIVATE(_upb_Message_SetOneofCase)(
+    upb_Message* msg, const upb_MiniTableField* f) {
+  *UPB_PRIVATE(_upb_Message_OneofCasePtr)(msg, f) =
+      upb_MiniTableField_Number(f);
 }
 
 // TODO: implement _upb_Message_ClearOneofCase()
@@ -136,12 +132,12 @@ UPB_INLINE const void* _upb_MiniTableField_GetConstPtr(
   return (char*)msg + field->offset;
 }
 
-UPB_INLINE void _upb_Message_SetPresence(upb_Message* msg,
-                                         const upb_MiniTableField* field) {
+UPB_INLINE void UPB_PRIVATE(_upb_Message_SetPresence)(
+    upb_Message* msg, const upb_MiniTableField* field) {
   if (field->presence > 0) {
     _upb_Message_SetHasbitByField(msg, field);
   } else if (upb_MiniTableField_IsInOneof(field)) {
-    _upb_Message_SetOneofCase(msg, field);
+    UPB_PRIVATE(_upb_Message_SetOneofCase)(msg, field);
   }
 }
 
@@ -227,7 +223,7 @@ UPB_INLINE bool _upb_Message_HasNonExtensionField(
   UPB_ASSERT(upb_MiniTableField_HasPresence(field));
   UPB_ASSUME(!upb_MiniTableField_IsExtension(field));
   if (upb_MiniTableField_IsInOneof(field)) {
-    return _upb_Message_GetOneofCase(msg, field) ==
+    return UPB_PRIVATE(_upb_Message_GetOneofCase)(msg, field) ==
            upb_MiniTableField_Number(field);
   } else {
     return _upb_Message_GetHasbitByField(msg, field);
@@ -290,7 +286,7 @@ UPB_INLINE upb_MutableMessageValue _upb_Message_GetMutableField(
 UPB_INLINE void _upb_Message_SetNonExtensionField(
     upb_Message* msg, const upb_MiniTableField* field, const void* val) {
   UPB_ASSUME(!upb_MiniTableField_IsExtension(field));
-  _upb_Message_SetPresence(msg, field);
+  UPB_PRIVATE(_upb_Message_SetPresence)(msg, field);
   _upb_MiniTable_CopyFieldData(_upb_MiniTableField_GetPtr(msg, field), val,
                                field);
 }
@@ -325,7 +321,7 @@ UPB_INLINE void _upb_Message_ClearNonExtensionField(
   if (field->presence > 0) {
     _upb_Message_ClearHasbitByField(msg, field);
   } else if (upb_MiniTableField_IsInOneof(field)) {
-    uint32_t* ptr = _upb_Message_OneofCasePtr(msg, field);
+    uint32_t* ptr = UPB_PRIVATE(_upb_Message_OneofCasePtr)(msg, field);
     if (*ptr != upb_MiniTableField_Number(field)) return;
     *ptr = 0;
   }

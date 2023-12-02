@@ -24,7 +24,6 @@
 #include "upb/message/tagged_ptr.h"
 #include "upb/mini_table/extension.h"
 #include "upb/mini_table/field.h"
-#include "upb/mini_table/internal/field.h"
 #include "upb/mini_table/message.h"
 #include "upb/mini_table/sub.h"
 #include "upb/wire/decode.h"
@@ -242,7 +241,7 @@ upb_UnknownToMessageRet upb_MiniTable_PromoteUnknownToMessage(
   UPB_ASSERT(upb_MiniTable_GetSubMessageTable(mini_table, field) ==
              sub_mini_table);
   bool is_oneof = upb_MiniTableField_IsInOneof(field);
-  if (!is_oneof || _upb_Message_GetOneofCase(msg, field) ==
+  if (!is_oneof || UPB_PRIVATE(_upb_Message_GetOneofCase)(msg, field) ==
                        upb_MiniTableField_Number(field)) {
     UPB_ASSERT(upb_Message_GetMessage(msg, field, NULL) == NULL);
   }
@@ -276,7 +275,7 @@ upb_UnknownToMessageRet upb_MiniTable_PromoteUnknownToMessage(
   } while (unknown.status == kUpb_FindUnknown_Ok);
   if (message) {
     if (is_oneof) {
-      _upb_Message_SetOneofCase(msg, field);
+      UPB_PRIVATE(_upb_Message_SetOneofCase)(msg, field);
     }
     upb_Message_SetMessage(msg, mini_table, field, message);
     ret.message = message;
