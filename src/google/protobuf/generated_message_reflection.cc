@@ -372,10 +372,10 @@ size_t Reflection::SpaceUsedLong(const Message& message) const {
     const FieldDescriptor* field = descriptor_->field(i);
     if (field->is_repeated()) {
       switch (field->cpp_type()) {
-#define HANDLE_TYPE(UPPERCASE, LOWERCASE)                           \
-  case FieldDescriptor::CPPTYPE_##UPPERCASE:                        \
-    total_size += GetRaw<RepeatedField<LOWERCASE> >(message, field) \
-                      .SpaceUsedExcludingSelfLong();                \
+#define HANDLE_TYPE(UPPERCASE, LOWERCASE)                          \
+  case FieldDescriptor::CPPTYPE_##UPPERCASE:                       \
+    total_size += GetRaw<RepeatedField<LOWERCASE>>(message, field) \
+                      .SpaceUsedExcludingSelfLong();               \
     break
 
         HANDLE_TYPE(INT32, int32_t);
@@ -393,7 +393,7 @@ size_t Reflection::SpaceUsedLong(const Message& message) const {
             default:  // TODO:  Support other string reps.
             case FieldOptions::STRING:
               total_size +=
-                  GetRaw<RepeatedPtrField<std::string> >(message, field)
+                  GetRaw<RepeatedPtrField<std::string>>(message, field)
                       .SpaceUsedExcludingSelfLong();
               break;
           }
@@ -408,7 +408,7 @@ size_t Reflection::SpaceUsedLong(const Message& message) const {
             // so we use RepeatedPtrFieldBase directly.
             total_size +=
                 GetRaw<RepeatedPtrFieldBase>(message, field)
-                    .SpaceUsedExcludingSelfLong<GenericTypeHandler<Message> >();
+                    .SpaceUsedExcludingSelfLong<GenericTypeHandler<Message>>();
           }
 
           break;
@@ -821,10 +821,10 @@ void Reflection::SwapField(Message* message1, Message* message2,
                            const FieldDescriptor* field) const {
   if (field->is_repeated()) {
     switch (field->cpp_type()) {
-#define SWAP_ARRAYS(CPPTYPE, TYPE)                                 \
-  case FieldDescriptor::CPPTYPE_##CPPTYPE:                         \
-    MutableRaw<RepeatedField<TYPE> >(message1, field)              \
-        ->Swap(MutableRaw<RepeatedField<TYPE> >(message2, field)); \
+#define SWAP_ARRAYS(CPPTYPE, TYPE)                                \
+  case FieldDescriptor::CPPTYPE_##CPPTYPE:                        \
+    MutableRaw<RepeatedField<TYPE>>(message1, field)              \
+        ->Swap(MutableRaw<RepeatedField<TYPE>>(message2, field)); \
     break;
 
       SWAP_ARRAYS(INT32, int32_t);
@@ -1302,7 +1302,7 @@ int Reflection::FieldSize(const Message& message,
     switch (field->cpp_type()) {
 #define HANDLE_TYPE(UPPERCASE, LOWERCASE)    \
   case FieldDescriptor::CPPTYPE_##UPPERCASE: \
-    return GetRaw<RepeatedField<LOWERCASE> >(message, field).size()
+    return GetRaw<RepeatedField<LOWERCASE>>(message, field).size()
 
       HANDLE_TYPE(INT32, int32_t);
       HANDLE_TYPE(INT64, int64_t);
@@ -1414,9 +1414,9 @@ void Reflection::ClearField(Message* message,
     }
   } else {
     switch (field->cpp_type()) {
-#define HANDLE_TYPE(UPPERCASE, LOWERCASE)                           \
-  case FieldDescriptor::CPPTYPE_##UPPERCASE:                        \
-    MutableRaw<RepeatedField<LOWERCASE> >(message, field)->Clear(); \
+#define HANDLE_TYPE(UPPERCASE, LOWERCASE)                          \
+  case FieldDescriptor::CPPTYPE_##UPPERCASE:                       \
+    MutableRaw<RepeatedField<LOWERCASE>>(message, field)->Clear(); \
     break
 
       HANDLE_TYPE(INT32, int32_t);
@@ -1433,7 +1433,7 @@ void Reflection::ClearField(Message* message,
         switch (field->options().ctype()) {
           default:  // TODO:  Support other string reps.
           case FieldOptions::STRING:
-            MutableRaw<RepeatedPtrField<std::string> >(message, field)->Clear();
+            MutableRaw<RepeatedPtrField<std::string>>(message, field)->Clear();
             break;
         }
         break;
@@ -1446,7 +1446,7 @@ void Reflection::ClearField(Message* message,
           // We don't know which subclass of RepeatedPtrFieldBase the type is,
           // so we use RepeatedPtrFieldBase directly.
           MutableRaw<RepeatedPtrFieldBase>(message, field)
-              ->Clear<GenericTypeHandler<Message> >();
+              ->Clear<GenericTypeHandler<Message>>();
         }
         break;
       }
@@ -1464,9 +1464,9 @@ void Reflection::RemoveLast(Message* message,
     MutableExtensionSet(message)->RemoveLast(field->number());
   } else {
     switch (field->cpp_type()) {
-#define HANDLE_TYPE(UPPERCASE, LOWERCASE)                                \
-  case FieldDescriptor::CPPTYPE_##UPPERCASE:                             \
-    MutableRaw<RepeatedField<LOWERCASE> >(message, field)->RemoveLast(); \
+#define HANDLE_TYPE(UPPERCASE, LOWERCASE)                               \
+  case FieldDescriptor::CPPTYPE_##UPPERCASE:                            \
+    MutableRaw<RepeatedField<LOWERCASE>>(message, field)->RemoveLast(); \
     break
 
       HANDLE_TYPE(INT32, int32_t);
@@ -1483,7 +1483,7 @@ void Reflection::RemoveLast(Message* message,
         switch (field->options().ctype()) {
           default:  // TODO:  Support other string reps.
           case FieldOptions::STRING:
-            MutableRaw<RepeatedPtrField<std::string> >(message, field)
+            MutableRaw<RepeatedPtrField<std::string>>(message, field)
                 ->RemoveLast();
             break;
         }
@@ -1493,10 +1493,10 @@ void Reflection::RemoveLast(Message* message,
         if (IsMapFieldInApi(field)) {
           MutableRaw<MapFieldBase>(message, field)
               ->MutableRepeatedField()
-              ->RemoveLast<GenericTypeHandler<Message> >();
+              ->RemoveLast<GenericTypeHandler<Message>>();
         } else {
           MutableRaw<RepeatedPtrFieldBase>(message, field)
-              ->RemoveLast<GenericTypeHandler<Message> >();
+              ->RemoveLast<GenericTypeHandler<Message>>();
         }
         break;
     }
@@ -1557,10 +1557,10 @@ void Reflection::SwapElements(Message* message, const FieldDescriptor* field,
     MutableExtensionSet(message)->SwapElements(field->number(), index1, index2);
   } else {
     switch (field->cpp_type()) {
-#define HANDLE_TYPE(UPPERCASE, LOWERCASE)                 \
-  case FieldDescriptor::CPPTYPE_##UPPERCASE:              \
-    MutableRaw<RepeatedField<LOWERCASE> >(message, field) \
-        ->SwapElements(index1, index2);                   \
+#define HANDLE_TYPE(UPPERCASE, LOWERCASE)                \
+  case FieldDescriptor::CPPTYPE_##UPPERCASE:             \
+    MutableRaw<RepeatedField<LOWERCASE>>(message, field) \
+        ->SwapElements(index1, index2);                  \
     break
 
       HANDLE_TYPE(INT32, int32_t);
@@ -2407,10 +2407,10 @@ const Message& Reflection::GetRepeatedMessage(const Message& message,
     if (IsMapFieldInApi(field)) {
       return GetRaw<MapFieldBase>(message, field)
           .GetRepeatedField()
-          .Get<GenericTypeHandler<Message> >(index);
+          .Get<GenericTypeHandler<Message>>(index);
     } else {
       return GetRaw<RepeatedPtrFieldBase>(message, field)
-          .Get<GenericTypeHandler<Message> >(index);
+          .Get<GenericTypeHandler<Message>>(index);
     }
   }
 }
@@ -2428,10 +2428,10 @@ Message* Reflection::MutableRepeatedMessage(Message* message,
     if (IsMapFieldInApi(field)) {
       return MutableRaw<MapFieldBase>(message, field)
           ->MutableRepeatedField()
-          ->Mutable<GenericTypeHandler<Message> >(index);
+          ->Mutable<GenericTypeHandler<Message>>(index);
     } else {
       return MutableRaw<RepeatedPtrFieldBase>(message, field)
-          ->Mutable<GenericTypeHandler<Message> >(index);
+          ->Mutable<GenericTypeHandler<Message>>(index);
     }
   }
 }
@@ -2457,20 +2457,20 @@ Message* Reflection::AddMessage(Message* message, const FieldDescriptor* field,
     } else {
       repeated = MutableRaw<RepeatedPtrFieldBase>(message, field);
     }
-    result = repeated->AddFromCleared<GenericTypeHandler<Message> >();
+    result = repeated->AddFromCleared<GenericTypeHandler<Message>>();
     if (result == nullptr) {
       // We must allocate a new object.
       const Message* prototype;
       if (repeated->size() == 0) {
         prototype = factory->GetPrototype(field->message_type());
       } else {
-        prototype = &repeated->Get<GenericTypeHandler<Message> >(0);
+        prototype = &repeated->Get<GenericTypeHandler<Message>>(0);
       }
       result = prototype->New(message->GetArena());
       // We can guarantee here that repeated and result are either both heap
       // allocated or arena owned. So it is safe to call the unsafe version
       // of AddAllocated.
-      repeated->UnsafeArenaAddAllocated<GenericTypeHandler<Message> >(result);
+      repeated->UnsafeArenaAddAllocated<GenericTypeHandler<Message>>(result);
     }
 
     return result;
@@ -2492,7 +2492,7 @@ void Reflection::AddAllocatedMessage(Message* message,
     } else {
       repeated = MutableRaw<RepeatedPtrFieldBase>(message, field);
     }
-    repeated->AddAllocated<GenericTypeHandler<Message> >(new_entry);
+    repeated->AddAllocated<GenericTypeHandler<Message>>(new_entry);
   }
 }
 
@@ -2653,11 +2653,6 @@ const FieldDescriptor* Reflection::FindKnownExtensionByNumber(
     int number) const {
   if (!schema_.HasExtensionSet()) return nullptr;
   return descriptor_pool_->FindExtensionByNumber(descriptor_, number);
-}
-
-bool Reflection::SupportsUnknownEnumValues() const {
-  return FileDescriptorLegacy(descriptor_->file()).syntax() ==
-         FileDescriptorLegacy::Syntax::SYNTAX_PROTO3;
 }
 
 // ===================================================================
@@ -3097,21 +3092,21 @@ template <typename Type>
 const Type& Reflection::GetRepeatedField(const Message& message,
                                          const FieldDescriptor* field,
                                          int index) const {
-  return GetRaw<RepeatedField<Type> >(message, field).Get(index);
+  return GetRaw<RepeatedField<Type>>(message, field).Get(index);
 }
 
 template <typename Type>
 const Type& Reflection::GetRepeatedPtrField(const Message& message,
                                             const FieldDescriptor* field,
                                             int index) const {
-  return GetRaw<RepeatedPtrField<Type> >(message, field).Get(index);
+  return GetRaw<RepeatedPtrField<Type>>(message, field).Get(index);
 }
 
 template <typename Type>
 void Reflection::SetRepeatedField(Message* message,
                                   const FieldDescriptor* field, int index,
                                   Type value) const {
-  MutableRaw<RepeatedField<Type> >(message, field)->Set(index, value);
+  MutableRaw<RepeatedField<Type>>(message, field)->Set(index, value);
 }
 
 template <typename Type>
@@ -3119,21 +3114,21 @@ Type* Reflection::MutableRepeatedField(Message* message,
                                        const FieldDescriptor* field,
                                        int index) const {
   RepeatedPtrField<Type>* repeated =
-      MutableRaw<RepeatedPtrField<Type> >(message, field);
+      MutableRaw<RepeatedPtrField<Type>>(message, field);
   return repeated->Mutable(index);
 }
 
 template <typename Type>
 void Reflection::AddField(Message* message, const FieldDescriptor* field,
                           const Type& value) const {
-  MutableRaw<RepeatedField<Type> >(message, field)->Add(value);
+  MutableRaw<RepeatedField<Type>>(message, field)->Add(value);
 }
 
 template <typename Type>
 Type* Reflection::AddField(Message* message,
                            const FieldDescriptor* field) const {
   RepeatedPtrField<Type>* repeated =
-      MutableRaw<RepeatedPtrField<Type> >(message, field);
+      MutableRaw<RepeatedPtrField<Type>>(message, field);
   return repeated->Add();
 }
 
@@ -3619,7 +3614,7 @@ struct MetadataOwner {
   MetadataOwner() = default;  // private because singleton
 
   absl::Mutex mu_;
-  std::vector<std::pair<const Metadata*, const Metadata*> > metadata_arrays_;
+  std::vector<std::pair<const Metadata*, const Metadata*>> metadata_arrays_;
 };
 
 void AddDescriptors(const DescriptorTable* table);
