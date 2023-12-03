@@ -20,7 +20,6 @@
 
 #include "upb/message/internal/extension.h"
 #include "upb/message/internal/types.h"
-#include "upb/message/message.h"
 #include "upb/mini_table/extension.h"
 #include "upb/mini_table/extension_registry.h"
 #include "upb/mini_table/message.h"
@@ -65,16 +64,12 @@ struct upb_Message_InternalData {
    *   char data[size - sizeof(upb_Message_InternalData)]; */
 };
 
-/* Maps upb_CType -> memory size. */
-extern char _upb_CTypeo_size[12];
-
 UPB_INLINE size_t upb_msg_sizeof(const upb_MiniTable* m) {
   return m->size + sizeof(upb_Message_Internal);
 }
 
-// Inline version upb_Message_New(), for internal use.
-UPB_INLINE upb_Message* _upb_Message_New(const upb_MiniTable* mini_table,
-                                         upb_Arena* arena) {
+UPB_INLINE upb_Message* UPB_PRIVATE(_upb_Message_New)(
+    const upb_MiniTable* mini_table, upb_Arena* arena) {
   size_t size = upb_msg_sizeof(mini_table);
   void* mem = upb_Arena_Malloc(arena, size + sizeof(upb_Message_Internal));
   if (UPB_UNLIKELY(!mem)) return NULL;
@@ -91,11 +86,6 @@ UPB_INLINE upb_Message_Internal* upb_Message_Getinternal(
 
 // Discards the unknown fields for this message only.
 void _upb_Message_DiscardUnknown_shallow(upb_Message* msg);
-
-// Adds unknown data (serialized protobuf data) to the given message.
-// The data is copied into the message instance.
-bool _upb_Message_AddUnknown(upb_Message* msg, const char* data, size_t len,
-                             upb_Arena* arena);
 
 #ifdef __cplusplus
 } /* extern "C" */

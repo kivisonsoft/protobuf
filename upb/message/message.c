@@ -21,11 +21,6 @@ const double kUpb_NaN = NAN;
 
 static const size_t overhead = sizeof(upb_Message_InternalData);
 
-upb_Message* upb_Message_New(const upb_MiniTable* mini_table,
-                             upb_Arena* arena) {
-  return _upb_Message_New(mini_table, arena);
-}
-
 static bool realloc_internal(upb_Message* msg, size_t need, upb_Arena* arena) {
   upb_Message_Internal* in = upb_Message_Getinternal(msg);
   if (!in->internal) {
@@ -58,8 +53,8 @@ static bool realloc_internal(upb_Message* msg, size_t need, upb_Arena* arena) {
   return true;
 }
 
-bool _upb_Message_AddUnknown(upb_Message* msg, const char* data, size_t len,
-                             upb_Arena* arena) {
+bool upb_Message_AddUnknown(upb_Message* msg, const char* data, size_t len,
+                            upb_Arena* arena) {
   if (!realloc_internal(msg, len, arena)) return false;
   upb_Message_Internal* in = upb_Message_Getinternal(msg);
   memcpy(UPB_PTR_AT(in->internal, in->internal->unknown_end, char), data, len);
