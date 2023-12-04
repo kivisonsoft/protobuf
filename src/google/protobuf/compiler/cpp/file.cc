@@ -816,6 +816,13 @@ void FileGenerator::GenerateSourceForExtension(int idx, io::Printer* p) {
 
   NamespaceOpener ns(Namespace(file_, options_), p);
   extension_generators_[idx]->GenerateDefinition(p);
+  p->Emit(
+      {{"expr", [&] { extension_generators_[idx]->GenerateRegistration(p); }}},
+      R"cc(
+        PROTOBUF_ATTRIBUTE_INIT_PRIORITY2
+        static ::std::true_type _register_extensions_ PROTOBUF_UNUSED =
+            ($expr$, ::std::true_type{});
+      )cc");
 }
 
 void FileGenerator::GenerateGlobalSource(io::Printer* p) {
@@ -897,6 +904,23 @@ void FileGenerator::GenerateSource(io::Printer* p) {
     // Define extensions.
     for (int i = 0; i < extension_generators_.size(); ++i) {
       extension_generators_[i]->GenerateDefinition(p);
+    }
+
+    // On LITE we register the extensions here because we don't have the
+    // reflection registration declaration.
+    if (!HasDescriptorMethods(file_, options_) &&
+        !extension_generators_.empty()) {
+      p->Emit({{"expr",
+                [&] {
+                  for (const auto& gen : extension_generators_) {
+                    gen->GenerateRegistration(p);
+                  }
+                }}},
+              R"cc(
+                PROTOBUF_ATTRIBUTE_INIT_PRIORITY2
+                static ::std::true_type _register_extensions_ PROTOBUF_UNUSED =
+                    ($expr$, ::std::true_type{});
+              )cc");
     }
 
     p->Emit(R"cc(
@@ -1233,10 +1257,10 @@ void FileGenerator::GenerateReflectionInitializationCode(io::Printer* p) {
                  pinned_messages =
                      GetMessagesToPinGloballyForWeakDescriptors(file_);
                }
-               if (pinned_messages.empty()) {
+               if (pinned_messages.empty() && extension_generators_.empty()) {
                  p->Emit("&$desc_table$");
                } else {
-                 p->Emit({{"pinned",
+                 p->Emit({{"expr",
                            [&] {
                              for (const auto* pinned : pinned_messages) {
                                p->Emit(
@@ -1248,8 +1272,11 @@ void FileGenerator::GenerateReflectionInitializationCode(io::Printer* p) {
                                      ::_pbi::StrongPointer(&$default$),
                                    )cc");
                              }
+                             for (const auto& gen : extension_generators_) {
+                               gen->GenerateRegistration(p);
+                             }
                            }}},
-                         "($pinned$, &$desc_table$)");
+                         "($expr$, &$desc_table$)");
                }
              }},
         },
