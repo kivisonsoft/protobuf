@@ -315,7 +315,8 @@ int64_t TimeUtil::DurationToMicroseconds(const Duration& duration) {
 }
 
 int64_t TimeUtil::DurationToMilliseconds(const Duration& duration) {
-  return RoundTowardZero(DurationToNanoseconds(duration), kNanosPerMillisecond);
+  return duration.seconds() * kMillisPerSecond +
+         RoundTowardZero(duration.nanos(), kNanosPerMillisecond);
 }
 
 int64_t TimeUtil::DurationToSeconds(const Duration& duration) {
