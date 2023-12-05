@@ -1,4 +1,4 @@
-name: Build and Release Protobuf
+name: Build and Release Protobuf Static
 
 on:
   create:
