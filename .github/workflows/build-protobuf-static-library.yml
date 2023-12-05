@@ -13,7 +13,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         arch: [x86, x64, armv7, arm64, mips]
-        build_type: [debug, release]
+        build_type: [Debug, Release]
 
     steps:
     - name: Checkout code
