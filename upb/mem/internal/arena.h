@@ -8,7 +8,11 @@
 #ifndef UPB_MEM_INTERNAL_ARENA_H_
 #define UPB_MEM_INTERNAL_ARENA_H_
 
-#include "upb/mem/arena.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "upb/mem/alloc.h"
 
 // Must be last.
 #include "upb/port/def.inc"
@@ -16,6 +20,10 @@
 typedef struct _upb_MemBlock _upb_MemBlock;
 
 // LINT.IfChange(struct_definition)
+typedef struct {
+  char *ptr, *end;
+} _upb_ArenaHead;
+
 struct upb_Arena {
   _upb_ArenaHead head;
 
@@ -33,12 +41,12 @@ struct upb_Arena {
   UPB_ATOMIC(uintptr_t) parent_or_count;
 
   // All nodes that are fused together are in a singly-linked list.
-  UPB_ATOMIC(upb_Arena*) next;  // NULL at end of list.
+  UPB_ATOMIC(struct upb_Arena*) next;  // NULL at end of list.
 
   // The last element of the linked list.  This is present only as an
   // optimization, so that we do not have to iterate over all members for every
   // fuse.  Only significant for an arena root.  In other cases it is ignored.
-  UPB_ATOMIC(upb_Arena*) tail;  // == self when no other list members.
+  UPB_ATOMIC(struct upb_Arena*) tail;  // == self when no other list members.
 
   // Linked list of blocks to free/cleanup.  Atomic only for the benefit of
   // upb_Arena_SpaceAllocated().
@@ -46,50 +54,81 @@ struct upb_Arena {
 };
 // LINT.ThenChange(//depot/google3/third_party/upb/bits/typescript/arena.ts)
 
-UPB_INLINE bool _upb_Arena_IsTaggedRefcount(uintptr_t parent_or_count) {
-  return (parent_or_count & 1) == 1;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+bool UPB_PRIVATE(_upb_Arena_AllocBlock)(struct upb_Arena* a, size_t size);
+
+uint32_t UPB_PRIVATE(_upb_Arena_DebugRefCount)(struct upb_Arena* arena);
+size_t UPB_PRIVATE(_upb_Arena_DebugSpaceAllocated)(struct upb_Arena* arena);
+
+UPB_INLINE size_t UPB_PRIVATE(_upb_ArenaHas)(struct upb_Arena* a) {
+  _upb_ArenaHead* h = (_upb_ArenaHead*)a;
+  return (size_t)(h->end - h->ptr);
 }
 
-UPB_INLINE bool _upb_Arena_IsTaggedPointer(uintptr_t parent_or_count) {
-  return (parent_or_count & 1) == 0;
+UPB_INLINE void* UPB_PRIVATE(_upb_Arena_Malloc)(struct upb_Arena* a,
+                                                size_t size) {
+  size = UPB_ALIGN_MALLOC(size);
+  const size_t span = size + UPB_ASAN_GUARD_SIZE;
+
+  if (UPB_UNLIKELY(UPB_PRIVATE(_upb_ArenaHas)(a) < span)) {
+    if (!UPB_PRIVATE(_upb_Arena_AllocBlock)(a, size)) return NULL;  // OOM
+  }
+
+  // We have enough space to do a fast malloc.
+  _upb_ArenaHead* h = (_upb_ArenaHead*)a;
+  void* ret = h->ptr;
+  UPB_ASSERT(UPB_ALIGN_MALLOC((uintptr_t)ret) == (uintptr_t)ret);
+  UPB_ASSERT(UPB_ALIGN_MALLOC(size) == size);
+  UPB_UNPOISON_MEMORY_REGION(ret, size);
+
+  h->ptr += span;
+
+  return ret;
 }
 
-UPB_INLINE uintptr_t _upb_Arena_RefCountFromTagged(uintptr_t parent_or_count) {
-  UPB_ASSERT(_upb_Arena_IsTaggedRefcount(parent_or_count));
-  return parent_or_count >> 1;
+UPB_INLINE void* UPB_PRIVATE(_upb_Arena_Realloc)(struct upb_Arena* a, void* ptr,
+                                                 size_t oldsize, size_t size) {
+  _upb_ArenaHead* h = (_upb_ArenaHead*)a;
+  oldsize = UPB_ALIGN_MALLOC(oldsize);
+  size = UPB_ALIGN_MALLOC(size);
+  bool is_most_recent_alloc = (uintptr_t)ptr + oldsize == (uintptr_t)h->ptr;
+
+  if (is_most_recent_alloc) {
+    ptrdiff_t diff = size - oldsize;
+    if ((ptrdiff_t)UPB_PRIVATE(_upb_ArenaHas)(a) >= diff) {
+      h->ptr += diff;
+      return ptr;
+    }
+  } else if (size <= oldsize) {
+    return ptr;
+  }
+
+  void* ret = UPB_PRIVATE(_upb_Arena_Malloc)(a, size);
+
+  if (ret && oldsize > 0) {
+    memcpy(ret, ptr, UPB_MIN(oldsize, size));
+  }
+  return ret;
 }
 
-UPB_INLINE uintptr_t _upb_Arena_TaggedFromRefcount(uintptr_t refcount) {
-  uintptr_t parent_or_count = (refcount << 1) | 1;
-  UPB_ASSERT(_upb_Arena_IsTaggedRefcount(parent_or_count));
-  return parent_or_count;
+UPB_INLINE void UPB_PRIVATE(_upb_Arena_ShrinkLast)(struct upb_Arena* a,
+                                                   void* ptr, size_t oldsize,
+                                                   size_t size) {
+  _upb_ArenaHead* h = (_upb_ArenaHead*)a;
+  oldsize = UPB_ALIGN_MALLOC(oldsize);
+  size = UPB_ALIGN_MALLOC(size);
+  // Must be the last alloc.
+  UPB_ASSERT((char*)ptr + oldsize == h->ptr - UPB_ASAN_GUARD_SIZE);
+  UPB_ASSERT(size <= oldsize);
+  h->ptr = (char*)ptr + size;
 }
 
-UPB_INLINE upb_Arena* _upb_Arena_PointerFromTagged(uintptr_t parent_or_count) {
-  UPB_ASSERT(_upb_Arena_IsTaggedPointer(parent_or_count));
-  return (upb_Arena*)parent_or_count;
-}
-
-UPB_INLINE uintptr_t _upb_Arena_TaggedFromPointer(upb_Arena* a) {
-  uintptr_t parent_or_count = (uintptr_t)a;
-  UPB_ASSERT(_upb_Arena_IsTaggedPointer(parent_or_count));
-  return parent_or_count;
-}
-
-UPB_INLINE upb_alloc* upb_Arena_BlockAlloc(upb_Arena* arena) {
-  return (upb_alloc*)(arena->block_alloc & ~0x1);
-}
-
-UPB_INLINE uintptr_t upb_Arena_MakeBlockAlloc(upb_alloc* alloc,
-                                              bool has_initial) {
-  uintptr_t alloc_uint = (uintptr_t)alloc;
-  UPB_ASSERT((alloc_uint & 1) == 0);
-  return alloc_uint | (has_initial ? 1 : 0);
-}
-
-UPB_INLINE bool upb_Arena_HasInitialBlock(upb_Arena* arena) {
-  return arena->block_alloc & 0x1;
-}
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #include "upb/port/undef.inc"
 

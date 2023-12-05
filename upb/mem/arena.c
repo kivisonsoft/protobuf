@@ -5,15 +5,20 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-#include "upb/mem/internal/arena.h"
+#include "upb/mem/arena.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include "upb/mem/alloc.h"
+#include "upb/mem/internal/arena.h"
 #include "upb/port/atomic.h"
 
 // Must be last.
 #include "upb/port/def.inc"
 
 struct _upb_MemBlock {
-  // Atomic only for the benefit of SpaceAllocated().
+  // Atomic only for the benefit of DebugSpaceAllocated().
   UPB_ATOMIC(_upb_MemBlock*) next;
   uint32_t size;
   // Data follows.
@@ -26,6 +31,51 @@ typedef struct _upb_ArenaRoot {
   upb_Arena* root;
   uintptr_t tagged_count;
 } _upb_ArenaRoot;
+
+static bool _upb_Arena_IsTaggedRefcount(uintptr_t parent_or_count) {
+  return (parent_or_count & 1) == 1;
+}
+
+static bool _upb_Arena_IsTaggedPointer(uintptr_t parent_or_count) {
+  return (parent_or_count & 1) == 0;
+}
+
+static uintptr_t _upb_Arena_RefCountFromTagged(uintptr_t parent_or_count) {
+  UPB_ASSERT(_upb_Arena_IsTaggedRefcount(parent_or_count));
+  return parent_or_count >> 1;
+}
+
+static uintptr_t _upb_Arena_TaggedFromRefcount(uintptr_t refcount) {
+  uintptr_t parent_or_count = (refcount << 1) | 1;
+  UPB_ASSERT(_upb_Arena_IsTaggedRefcount(parent_or_count));
+  return parent_or_count;
+}
+
+static struct upb_Arena* _upb_Arena_PointerFromTagged(
+    uintptr_t parent_or_count) {
+  UPB_ASSERT(_upb_Arena_IsTaggedPointer(parent_or_count));
+  return (struct upb_Arena*)parent_or_count;
+}
+
+static uintptr_t _upb_Arena_TaggedFromPointer(struct upb_Arena* a) {
+  uintptr_t parent_or_count = (uintptr_t)a;
+  UPB_ASSERT(_upb_Arena_IsTaggedPointer(parent_or_count));
+  return parent_or_count;
+}
+
+static upb_alloc* _upb_Arena_BlockAlloc(struct upb_Arena* arena) {
+  return (upb_alloc*)(arena->block_alloc & ~0x1);
+}
+
+static uintptr_t _upb_Arena_MakeBlockAlloc(upb_alloc* alloc, bool has_initial) {
+  uintptr_t alloc_uint = (uintptr_t)alloc;
+  UPB_ASSERT((alloc_uint & 1) == 0);
+  return alloc_uint | (has_initial ? 1 : 0);
+}
+
+static bool _upb_Arena_HasInitialBlock(struct upb_Arena* arena) {
+  return arena->block_alloc & 0x1;
+}
 
 static _upb_ArenaRoot _upb_Arena_FindRoot(upb_Arena* a) {
   uintptr_t poc = upb_Atomic_Load(&a->parent_or_count, memory_order_acquire);
@@ -64,7 +114,7 @@ static _upb_ArenaRoot _upb_Arena_FindRoot(upb_Arena* a) {
   return (_upb_ArenaRoot){.root = a, .tagged_count = poc};
 }
 
-size_t upb_Arena_SpaceAllocated(upb_Arena* arena) {
+size_t UPB_PRIVATE(_upb_Arena_DebugSpaceAllocated)(upb_Arena* arena) {
   arena = _upb_Arena_FindRoot(arena).root;
   size_t memsize = 0;
 
@@ -81,7 +131,7 @@ size_t upb_Arena_SpaceAllocated(upb_Arena* arena) {
   return memsize;
 }
 
-uint32_t upb_Arena_DebugRefCount(upb_Arena* a) {
+uint32_t UPB_PRIVATE(_upb_Arena_DebugRefCount)(upb_Arena* a) {
   // These loads could probably be relaxed, but given that this is debug-only,
   // it's not worth introducing a new variant for it.
   uintptr_t poc = upb_Atomic_Load(&a->parent_or_count, memory_order_acquire);
@@ -106,31 +156,26 @@ static void upb_Arena_AddBlock(upb_Arena* a, void* ptr, size_t size) {
   UPB_POISON_MEMORY_REGION(a->head.ptr, a->head.end - a->head.ptr);
 }
 
-static bool upb_Arena_AllocBlock(upb_Arena* a, size_t size) {
+bool UPB_PRIVATE(_upb_Arena_AllocBlock)(upb_Arena* a, size_t size) {
   if (!a->block_alloc) return false;
   _upb_MemBlock* last_block = upb_Atomic_Load(&a->blocks, memory_order_acquire);
   size_t last_size = last_block != NULL ? last_block->size : 128;
   size_t block_size = UPB_MAX(size, last_size * 2) + memblock_reserve;
-  _upb_MemBlock* block = upb_malloc(upb_Arena_BlockAlloc(a), block_size);
+  _upb_MemBlock* block = upb_malloc(_upb_Arena_BlockAlloc(a), block_size);
 
   if (!block) return false;
   upb_Arena_AddBlock(a, block, block_size);
+  UPB_ASSERT(UPB_PRIVATE(_upb_ArenaHas)(a) >= size);
   return true;
 }
 
-void* _upb_Arena_SlowMalloc(upb_Arena* a, size_t size) {
-  if (!upb_Arena_AllocBlock(a, size)) return NULL; /* Out of memory. */
-  UPB_ASSERT(_upb_ArenaHas(a) >= size);
-  return upb_Arena_Malloc(a, size);
-}
-
-/* Public Arena API ***********************************************************/
+// Public Arena API ////////////////////////////////////////////////////////////
 
 static upb_Arena* upb_Arena_InitSlow(upb_alloc* alloc) {
   const size_t first_block_overhead = sizeof(upb_Arena) + memblock_reserve;
   upb_Arena* a;
 
-  /* We need to malloc the initial block. */
+  // We need to malloc the initial block.
   char* mem;
   size_t n = first_block_overhead + 256;
   if (!alloc || !(mem = upb_malloc(alloc, n))) {
@@ -140,7 +185,7 @@ static upb_Arena* upb_Arena_InitSlow(upb_alloc* alloc) {
   a = UPB_PTR_AT(mem, n - sizeof(*a), upb_Arena);
   n -= sizeof(*a);
 
-  a->block_alloc = upb_Arena_MakeBlockAlloc(alloc, 0);
+  a->block_alloc = _upb_Arena_MakeBlockAlloc(alloc, 0);
   upb_Atomic_Init(&a->parent_or_count, _upb_Arena_TaggedFromRefcount(1));
   upb_Atomic_Init(&a->next, NULL);
   upb_Atomic_Init(&a->tail, a);
@@ -155,15 +200,15 @@ upb_Arena* upb_Arena_Init(void* mem, size_t n, upb_alloc* alloc) {
   upb_Arena* a;
 
   if (n) {
-    /* Align initial pointer up so that we return properly-aligned pointers. */
+    // Align initial pointer up so that we return properly-aligned pointers.
     void* aligned = (void*)UPB_ALIGN_UP((uintptr_t)mem, UPB_MALLOC_ALIGN);
     size_t delta = (uintptr_t)aligned - (uintptr_t)mem;
     n = delta <= n ? n - delta : 0;
     mem = aligned;
   }
 
-  /* Round block size down to alignof(*a) since we will allocate the arena
-   * itself at the end. */
+  // Round block size down to alignof(*a) since we will allocate the arena
+  // itself at the end.
   n = UPB_ALIGN_DOWN(n, UPB_ALIGN_OF(upb_Arena));
 
   if (UPB_UNLIKELY(n < sizeof(upb_Arena))) {
@@ -176,7 +221,7 @@ upb_Arena* upb_Arena_Init(void* mem, size_t n, upb_alloc* alloc) {
   upb_Atomic_Init(&a->next, NULL);
   upb_Atomic_Init(&a->tail, a);
   upb_Atomic_Init(&a->blocks, NULL);
-  a->block_alloc = upb_Arena_MakeBlockAlloc(alloc, 1);
+  a->block_alloc = _upb_Arena_MakeBlockAlloc(alloc, 1);
   a->head.ptr = mem;
   a->head.end = UPB_PTR_AT(mem, n - sizeof(*a), char);
 
@@ -190,7 +235,7 @@ static void arena_dofree(upb_Arena* a) {
     // Load first since arena itself is likely from one of its blocks.
     upb_Arena* next_arena =
         (upb_Arena*)upb_Atomic_Load(&a->next, memory_order_acquire);
-    upb_alloc* block_alloc = upb_Arena_BlockAlloc(a);
+    upb_alloc* block_alloc = _upb_Arena_BlockAlloc(a);
     _upb_MemBlock* block = upb_Atomic_Load(&a->blocks, memory_order_acquire);
     while (block != NULL) {
       // Load first since we are deleting block.
@@ -333,7 +378,7 @@ bool upb_Arena_Fuse(upb_Arena* a1, upb_Arena* a2) {
 
   // Do not fuse initial blocks since we cannot lifetime extend them.
   // Any other fuse scenario is allowed.
-  if (upb_Arena_HasInitialBlock(a1) || upb_Arena_HasInitialBlock(a2)) {
+  if (_upb_Arena_HasInitialBlock(a1) || _upb_Arena_HasInitialBlock(a2)) {
     return false;
   }
 
@@ -349,7 +394,7 @@ bool upb_Arena_Fuse(upb_Arena* a1, upb_Arena* a2) {
 
 bool upb_Arena_IncRefFor(upb_Arena* arena, const void* owner) {
   _upb_ArenaRoot r;
-  if (upb_Arena_HasInitialBlock(arena)) return false;
+  if (_upb_Arena_HasInitialBlock(arena)) return false;
 
 retry:
   r = _upb_Arena_FindRoot(arena);
