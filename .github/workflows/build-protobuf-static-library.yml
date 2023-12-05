@@ -1,4 +1,4 @@
-name: Build and Release Protobuf Static
+name: Build and Release Protobuf
 
 on:
   create:
@@ -7,23 +7,17 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         arch: [x86, x64, armv7, arm64, mips]
-        build_type: [Debug, Release]
+        build_type: [debug, release]
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
-      runs-on: ubuntu-latest
-      strategy:
-        matrix:
-          node-version: [16.x]
-      with:
-        node-version: ${{ matrix.node-version }}
 
     - name: Setup protobuf
       run: |
